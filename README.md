@@ -1,6 +1,8 @@
 The settings file needs to be customized to your specifications.
-Especially the desired place description
-I recommend using a json editor such as https://jsoneditoronline.org/
+Especially the desired place description.
+It should be rather easy to edit, just follow existing formatting
+Use a yaml validator https://yamlvalidator.com/ if you need to.
+
 
 Later values overwrite earlier values.
 Be especially careful with the style section with your short patterns.
