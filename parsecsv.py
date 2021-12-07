@@ -5,6 +5,7 @@ from requests.exceptions import HTTPError
 import csv
 import math
 import glob
+import os
 from lxml import etree
 from number_parser import parse_number
 from pykml.helpers import set_max_decimal_places
@@ -50,21 +51,10 @@ with open('./config.yml') as file:
         print('No google maps key found in config file.')
         print('There will be no conversion to coordinates.')
     assert 'description' in config, 'No description found in config file.'
-    assert 'display' in config, 'No display found in config file.'
     assert 'categories' in config, 'No categories found in config file.'
 
 
-# Load from json
-with open('settings.json', 'r') as file:
-    import json
-    allinfo = json.load(file)
-    POSSIBLE_KEYS = allinfo['description']
-    DISPLAY_AND_UNITS = allinfo['display']
-    STYLE_INFO = allinfo['categories']
-    GOOGLEMAPS_KEY = allinfo['mapskey']
-
-
-def tofloat(num: str) -> float:
+def to_float(num: str) -> float or None:
     """Converts a string to a float, if possible."""
     num = re.sub(r'[<>,]', '', num)
     try:
@@ -83,29 +73,22 @@ def normalize_place(place: dict) -> dict:
     Returns:
         dict: a place containing all required keys
     """
-    possible_keys = POSSIBLE_KEYS.copy()
+    possible_keys = config['information'].copy()
 
     # Create blank normalized place
-    normalized_place = {k: str() for k in POSSIBLE_KEYS}
+    normalized_place = {k: str() for k in possible_keys}
 
-    # Fill in normalized place
-    for col_name, col_value in place.items():
-        # Scan each option for a match
-        for key_name, syn_lst in possible_keys.items():
-            # Check each key, including the name
-            for key_to_check in list(syn_lst) + [key_name, ]:
-                # If we find a match in the column name, we are DONE with that key but NOT with the column
+    for key_name, syn_lst in possible_keys.items():
+        for key_to_check in syn_lst:
+            for col_name, col_value in place.items():
                 if key_to_check.lower() in col_name.lower():
+                    print(f'found {key_to_check} in {col_name} for {key_name}')
                     # Key found. Attempt to parse if it is a number
-                    if as_number := tofloat(col_value):
+                    if as_number := to_float(col_value):
                         normalized_place[key_name] = as_number
                     else:
                         normalized_place[key_name] = str(col_value).title()
-                    #del possible_keys[key_name]
-                    break
-            # else:
-            #    continue
-            # break
+
     print('\n\n')
     print(place)
     print(normalized_place)
@@ -139,7 +122,10 @@ def address_to_coords(address: str) -> tuple:
     except (IndexError, HTTPError) as e:
         # log error
         print(
-            f'Error getting coords for {address}.\nError: {e}'
+            f'Error getting coords for {address}.',
+            f'Response: {resp.text()}',
+            f'Error: {e}',
+            sep='\n'
         )
         return tuple()
 
@@ -182,8 +168,18 @@ def calculate_style(place: dict) -> KML.Style:
     Returns:
         KML.Style: The style to use for the place
     """
+    STYLE_INFO = config['categories']
+    STYLE_INFO = {
+        style: {k: v for d in L for k, v in d.items()}
+        for style, L in STYLE_INFO.items()
+    }
+
     style_info = STYLE_INFO['*']
+    if 'identifiers' not in style_info:
+        style_info['identifiers'] = list()
+
     print(f'Calculating style for {place["name"]}')
+
     for style_key, style_val in STYLE_INFO.items():
         if style_key == '*':
             continue
@@ -192,8 +188,9 @@ def calculate_style(place: dict) -> KML.Style:
         if '&' in style_key:
             # Generate combined identifiers
             all_identifiers = [STYLE_INFO[style]['identifiers']
-                               for style in style_key.split('&') if style in STYLE_INFO]
-            # TODO: finish. It must match all identifiers, which each match any part of the place type
+                               for style in style_key.split('&') if style in STYLE_INFO] + [
+                style_info['identifiers']]
+
             if all(any(identifier in place['type'].lower() for identifier in sub_identifiers) for sub_identifiers in all_identifiers):
                 style_info = {**style_info, **style_val}
                 place['category'] = style_key
@@ -253,10 +250,19 @@ def place_to_kml(place: dict) -> KML.Placemark:
         KML.Placemark: The placemark ready to add to the kml
     """
 
-    description = str()
-    for key, unit in DISPLAY_AND_UNITS.items():
-        if key in place and place[key]:
-            description += f'<p>{key.title()}: {place[key]} {unit}</p>'
+    description = config['description']
+
+    # Replace all placeholders with their values
+    def normalize(s): return re.sub(r'\s+|\{|\}', '', str(s)).lower()
+    token_styles = {
+        normalize(column): column for column in config['information']}
+    for token in re.findall(r'\{(.*?)\}', description):
+        token = normalize(token)
+        if token in token_styles:
+            description = description.replace(
+                f'{{{token}}}',
+                str(place[token_styles[token]])
+            )
 
     # Create KML Placemark
     return KML.Placemark(
@@ -327,7 +333,4 @@ def main(docname: str, data_sources: list or str):
 
 
 if __name__ == '__main__':
-    def dontprint(*args, **kwargs):
-        pass
-    print = dontprint
-    main()
+    main(config['title'], './')

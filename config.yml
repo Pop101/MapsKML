@@ -10,36 +10,36 @@ Information:
 
   # Defines a column storing the place's name
   # Any column with a name containing the words "shelter", "title", "name" or "place" will be used
-  - name:
+  name:
     - "Shelter"
     - "Title"
     - "Name"
 
   # You can define as many columns as necessary
   # This one stores the type of shelter
-  - type:
+  type:
     - "Type"
     - "From"
 
-  - organizer:
+  organizer:
     - "Organizer"
     - "Ran by"
     - "Host"
 
-  - address:
+  address:
     - "Address"
 
-  - location:
+  location:
+    - "Address"
     - "Location"
-    - "Coordinates"
-    - "Address"
+    - "Coordinate"
 
-  - website:
+  website:
     - "url"
     - "link"
     - "website"
 
-  - size:
+  size:
     - "Size"
     - "Capacity"
     - "Occupancy"
@@ -47,7 +47,16 @@ Information:
 # Defines names of special columns
 # These columns will be used to determine the type of the place
 # and can scale based on a place's maximum capacity
+# All columns here are optional except title and location
 Special Columns:
+  # This column contains a place's title
+  title: "name"
+
+  # This column contains a place's location
+  # It can be either coordinates or a textual address
+  # Addresses are geocoded using Google Maps
+  location: "location"
+  
   # This column must contain a number for
   # proper scaling
   scaling: "size"
@@ -83,7 +92,7 @@ Categories:
   #
   # All categories build off this one, so changing
   # a value here will affect all categories that don't override it
-  - "*":
+  "*":
     - color: "#000000"
     - icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
     - identifiers:
@@ -96,7 +105,7 @@ Categories:
   # "storm", or "hurricane" in the categorizer column
   # will be assigned this category and
   # all style attributes will be applied
-  - storm:
+  storm:
     - color: "#000000"
     - icon: "https://drive.google.com/uc?id=1XF2EbWOqPECjbDHvAmJT_Ds7LYuUAj1E"
     - identifiers:
@@ -107,14 +116,14 @@ Categories:
   # Note that there is no color style here,
   # This means that the color of the category
   # is determined by the "*" category
-  - heat:
+  heat:
     - icon: "https://drive.google.com/uc?id=1LvEhkbw3JUSPTadqPkeGe1Vt4kgoY5XR"
     - identifiers:
       - "hot"
       - "heat"
       - "temperature"
   
-  - cold:
+  cold:
     - icon: "https://drive.google.com/uc?id=1Wi1WThTK38ozf6aXI0ZuVYgOsIVmibU8"
     - identifiers:
       - "cold"
@@ -126,10 +135,10 @@ Categories:
   # Creates a column called "Hot & Cold"
   # Will match all columns that match both "hot" and "cold"
   # Note that identifiers are ignored in these merged columns
-  - hot&cold:
+  hot&cold:
     - icon: "https://drive.google.com/uc?id=1mlRhUJB9eNnynlvPNwj1DGQm-Y5InXsn"
 
-  - smoke:
+  smoke:
     - icon: "https://drive.google.com/uc?id=1K8C-2QtoDWqEm_A6KcfkdAVgpwAa5V_k"
     - identifiers:
       - "smoke"
@@ -142,7 +151,7 @@ Categories:
       - "pollution"
       - "dust"
   
-  - overnight:
+  overnight:
     - icon: "https://drive.google.com/uc?id=1JbW8uTIHIflhpk2tWIcPYb4po-l-5XVZ"
     - identifiers:
         - "overnight"
