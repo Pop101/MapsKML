@@ -1,17 +1,57 @@
-# Requires pyKML, lxml, number_parser
+import yaml
+import re
+import requests
+from requests.exceptions import HTTPError
+import csv
+import math
+import glob
+from lxml import etree
+from number_parser import parse_number
+from pykml.helpers import set_max_decimal_places
+from pykml.factory import KML_ElementMaker as KML
+
+# Requires pyKML, lxml, number_parser, pyyaml
 # Download with 'pip install pykml lxml number_parser'
 # Also requires google map key. Get one at the google developer console
 
-from pykml.factory import KML_ElementMaker as KML
-from pykml.helpers import set_max_decimal_places
-from number_parser import parse_number
-from lxml import etree
-import glob
-import math
-import csv
-from requests.exceptions import HTTPError
-import requests
-import re
+
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
+
+# Load the configuraiton file
+config = dict()
+with open('./config.yml') as file:
+    yml = yaml.load(file.read(), Loader=Loader)
+
+    # Parse recursively to alter all dictionary keys
+    def parse_ymlconfiguration(cfg: dict):
+        result = dict()
+        if isinstance(cfg, dict):
+            for k, v in dict(cfg).items():
+                if isinstance(v, dict) or isinstance(v, list):
+                    v = parse_ymlconfiguration(v)
+                result[str(k).lower().replace(' ', '_')] = v
+        elif isinstance(cfg, list):
+            result = list()
+            for x in cfg:
+                if isinstance(x, dict) or isinstance(x, list):
+                    x = parse_ymlconfiguration(x)
+                result.append(x)
+        else:
+            return cfg
+        return result
+
+    config = parse_ymlconfiguration(yml)
+    if 'googlemaps_key' in config:
+        GOOGLEMAPS_KEY = config['googlemaps_key']
+    else:
+        print('No google maps key found in config file.')
+        print('There will be no conversion to coordinates.')
+    assert 'description' in config, 'No description found in config file.'
+    assert 'display' in config, 'No display found in config file.'
+    assert 'categories' in config, 'No categories found in config file.'
 
 
 # Load from json
@@ -24,7 +64,8 @@ with open('settings.json', 'r') as file:
     GOOGLEMAPS_KEY = allinfo['mapskey']
 
 
-def tofloat(num):
+def tofloat(num: str) -> float:
+    """Converts a string to a float, if possible."""
     num = re.sub(r'[<>,]', '', num)
     try:
         return parse_number(num) or float(num)
@@ -32,9 +73,16 @@ def tofloat(num):
         return None
 
 
-def normalize_place(place) -> dict:
-    # Parse any dict to a normalized dict
-    # copy possible keys
+def normalize_place(place: dict) -> dict:
+    """
+    Converts a place to a dictionary with all keys required by the config file.
+
+    Args:
+        place (dict): The raw csv row
+
+    Returns:
+        dict: a place containing all required keys
+    """
     possible_keys = POSSIBLE_KEYS.copy()
 
     # Create blank normalized place
@@ -65,6 +113,16 @@ def normalize_place(place) -> dict:
 
 
 def address_to_coords(address: str) -> tuple:
+    """
+    Converts an address to coordinates.
+    Requires a google maps key to be set in the config file.
+
+    Args:
+        address (str): The street address or intersection
+
+    Returns:
+        tuple: latitude, longitude
+    """
     # Use google maps api to get coordinates
     resp = requests.get('https://maps.googleapis.com/maps/api/geocode/json', params={
         'address': address.encode('ascii', 'xmlcharrefreplace'),
@@ -86,7 +144,18 @@ def address_to_coords(address: str) -> tuple:
         return tuple()
 
 
-def parse_normalized_place(place: dict) -> dict:
+def add_coords_to_place(place: dict) -> dict:
+    """
+    Updates fields in a place to include coordinates,
+    calling address_to_coords() if necessary.
+
+    Args:
+        place (dict): The place to update
+
+    Returns:
+        dict: The place with coordinates
+    """
+
     if 'location' in place and len(place['location']) > 3:
         # if there are any non numbers in the location
         if any(not c in '0123456789' for c in re.sub(r'N|E|S|W|-|,|\s+|\.|\,', '', place['location'])):
@@ -103,6 +172,16 @@ def parse_normalized_place(place: dict) -> dict:
 
 
 def calculate_style(place: dict) -> KML.Style:
+    """
+    Categorizes a place and sets its style according
+    to the config file.
+
+    Args:
+        place (dict): The place to categorize
+
+    Returns:
+        KML.Style: The style to use for the place
+    """
     style_info = STYLE_INFO['*']
     print(f'Calculating style for {place["name"]}')
     for style_key, style_val in STYLE_INFO.items():
@@ -163,16 +242,23 @@ def calculate_style(place: dict) -> KML.Style:
 
 
 def place_to_kml(place: dict) -> KML.Placemark:
-    # Generate Description
-    # List all keys you want in the description of the place
-    # order matters!
+    """
+    Converts a place to a KML placemark,
+    calling calculate_style() to set the style.
+
+    Args:
+        place (dict): The place with coordinates marked
+
+    Returns:
+        KML.Placemark: The placemark ready to add to the kml
+    """
 
     description = str()
     for key, unit in DISPLAY_AND_UNITS.items():
         if key in place and place[key]:
             description += f'<p>{key.title()}: {place[key]} {unit}</p>'
 
-    # Create KML Placemark+
+    # Create KML Placemark
     return KML.Placemark(
         KML.name(place['name']),
         KML.description(
@@ -181,47 +267,67 @@ def place_to_kml(place: dict) -> KML.Placemark:
         ),
         KML.Point(
             KML.coordinates(
-                ','.join(map(str, reversed(place['location']))))
-            # KML.coordinates("-64.5253,18.4607")
+                ','.join(map(str, reversed(place['location'])))
+            )
         ),
         calculate_style(place)
     )
 
 
-# Loop over all csvs in directory using glob
-raw_places = list()
-for path in glob.glob('*.csv'):
-    with open(path, 'r') as f:
-        reader = csv.DictReader(f)
-        for line in reader:
-            raw_places.append(line)
+def main(docname: str, data_sources: list or str):
+    if(isinstance(data_sources, str)):
+        data_sources = [data_sources]
 
-print(raw_places)
-normalized_places = list(map(normalize_place, raw_places))
-print('Places:\n\n', normalized_places)
-normalized_places = list(map(parse_normalized_place, normalized_places))
-normalized_places = list(filter(lambda p: len(
-    str(p['location'])) > 3, normalized_places))
-print('Normalized:\n\n', normalized_places)
-kml_places = list(map(place_to_kml, normalized_places))
+    data_files = list()
+    for data_source in data_sources:
+        if os.path.isfile(data_source) and data_source.endswith('.csv'):
+            data_files.append(data_source)
+        elif os.path.isdir(data_source):
+            data_files.extend(glob.glob(os.path.join(data_source, '*.csv')))
+        elif data_source.strip() == '*':
+            data_files.extend(glob.glob('*.csv'))
+        else:
+            print(f'{data_source} is not a valid data source')
 
-kml_document = KML.kml(
-    KML.Document(
-        KML.name('Shelters'),
-        *kml_places
+    # Load all data file contents as raw data
+    raw_places = list()
+    for path in data_files:
+        with open(path, 'r') as f:
+            reader = csv.DictReader(f)
+            for line in reader:
+                raw_places.append(line)
+
+    print(raw_places)
+    normalized_places = list(map(normalize_place, raw_places))
+    print('Places:\n\n', normalized_places)
+    normalized_places = list(map(add_coords_to_place, normalized_places))
+    normalized_places = list(filter(lambda p: len(
+        str(p['location'])) > 3, normalized_places)
     )
-)
+    print('Normalized:\n\n', normalized_places)
+    kml_places = list(map(place_to_kml, normalized_places))
 
-with open('shelters.kml', 'w') as f:
-    f.write(etree.tostring(kml_document, pretty_print=True).decode('utf-8'))
+    kml_document = KML.kml(
+        KML.Document(
+            KML.name(docname.title()),
+            *kml_places
+        )
+    )
 
-set_max_decimal_places(kml_document, max_decimals={
-    'latitude': 6,
-    'longitude': 6
-})
+    with open(f'{docname.lower()}.kml', 'w') as f:
+        f.write(etree.tostring(kml_document, pretty_print=True).decode('utf-8'))
 
-with open('shelters.kml', 'w') as f:
-    f.write(etree.tostring(kml_document, pretty_print=True).decode('utf-8'))
+    set_max_decimal_places(kml_document, max_decimals={
+        'latitude': 6,
+        'longitude': 6
+    })
 
-# Now we have all the information from each file
-# Filter it into our resulting columns: name, description
+    with open(f'{docname.lower()}.kml', 'w') as f:
+        f.write(etree.tostring(kml_document, pretty_print=True).decode('utf-8'))
+
+
+if __name__ == '__main__':
+    def dontprint(*args, **kwargs):
+        pass
+    print = dontprint
+    main()
