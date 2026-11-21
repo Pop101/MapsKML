@@ -1,22 +1,34 @@
-The settings file needs to be customized to your specifications.
-Especially the desired place description.
-It should be rather easy to edit, just follow existing formatting
-Use a yaml validator https://yamlvalidator.com/ if you need to.
+# MapsKML
 
+Turn a CSV of places into a KML map. The script adds coordinates where needed and assigns pin styles according to rules in YAML.
 
-Later values overwrite earlier values.
-Be especially careful with the style section with your short patterns.
+[![Open GitHub issues](https://img.shields.io/github/issues/Pop101/MapsKML?style=flat-square)](https://github.com/Pop101/MapsKML/issues)
 
-The most important thing is getting a Google Maps API Key
-Follow this tutorial https://www.youtube.com/watch?v=Szv0p9eyRX0
-Paste it in the settings.
-Don't forget to modify settings to fit your needs
+![MapsKML project cover](.github/images/readme-hero.svg)
 
-The script is a python script, so to run it, you need to install python.
-After getting python 3 or later, check your version
-by typing "python -version" into the command line.
+## Table of Contents
 
-Open this folder in a command prompt and type
-"pip3 install -r requirements.txt" to install required packages,
-then paste your csv into the folder.
-Run the script with "python3 parsecsv.py" and your kml will pop out.
+- [Overview](#overview)
+- [Technologies](#technologies)
+- [Getting Started](#getting-started)
+- [Usage](#usage)
+
+## Overview
+
+The script reads CSV rows and a YAML mapping, applies description and style rules, and writes a KML file. Later matching styles override earlier ones.
+
+## Technologies
+
+- [Python](https://www.python.org/)
+- [pyKML](https://pypi.org/project/pykml/)
+- [lxml](https://lxml.de/)
+- [PyYAML](https://pyyaml.org/)
+- [Google Maps Geocoding API](https://developers.google.com/maps/documentation/geocoding/overview)
+
+## Getting Started
+
+Review [`config.yml`](config.yml), [`requirements.txt`](requirements.txt), and the [`parsecsv.py`](parsecsv.py) source. The script imports PyYAML although the checked-in requirements don't declare it. A clean setup hasn't been tested.
+
+## Usage
+
+Start with a CSV of public landmarks. Geocoding sends addresses to Google and requires a key. Keep credentials out of commits, avoid entering private addresses, and review the resulting KML before sharing it.
